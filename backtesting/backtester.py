@@ -13,6 +13,7 @@ class Backtester:
         self.cash = initial_capital
         self.shares = 0
         self.trades = []
+        self.equity_curve = []
 
 
     def run(self, strategy_function):
@@ -59,7 +60,11 @@ class Backtester:
 
                 self.shares = 0
 
-
+                self.equity_curve.append(
+                self.cash +
+                self.shares *
+                price
+            )
         final_price = self.data.iloc[-1]["close"]
 
         portfolio_value = (
@@ -74,5 +79,6 @@ class Backtester:
             "return_percent":
                 ((portfolio_value /
                   self.initial_capital)-1)*100,
-            "trades": self.trades
+            "trades": self.trades,
+            "equity_curve": self.equity_curve
         }
