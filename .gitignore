@@ -27,4 +27,10 @@ __pycache__/
 htmlcov/
 
 # Jupyter
-.ipynb_checkpoints/
+.ipynb_checkpoints/dist/
+build/
+*.spec
+__pycache__/
+*.pyc
+.venv/
+.env
