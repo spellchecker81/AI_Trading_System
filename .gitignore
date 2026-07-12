@@ -34,3 +34,5 @@ __pycache__/
 *.pyc
 .venv/
 .env
+dist/
+dist/
