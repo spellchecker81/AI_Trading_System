@@ -26,10 +26,15 @@ def get_historical_data(symbol, days=30):
         bars = ib.reqHistoricalData(
             contract,
             endDateTime="",
-            durationStr=f"{days} D",
+            durationStr = (
+                f"{days // 365} Y"
+                if days > 365
+                else f"{days} D"
+            ),
             barSizeSetting="1 day",
             whatToShow="TRADES",
-            useRTH=True
+            useRTH=True,
+            formatDate=1
         )
 
         df = pd.DataFrame(
@@ -57,10 +62,18 @@ def get_historical_data(symbol, days=30):
         print("Error:")
         print(e)
 
+        if ib.isConnected():
+            ib.disconnect()
+
+        return pd.DataFrame()
+
 
 if __name__ == "__main__":
 
-    data = get_historical_data("AAPL", 30)
+    data = get_historical_data(
+        "AAPL",
+        365
+    )
 
     print(
         f"\nDownloaded {len(data)} rows"
