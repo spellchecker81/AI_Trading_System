@@ -17,4 +17,4 @@ A desktop application that:
 - Modular architecture
 - Automated testing
 - Risk-first design
-- Paper trading before live trading
+- Paper trading before live trading# AI_Trading_System
