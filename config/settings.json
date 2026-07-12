@@ -1,0 +1,9 @@
+{
+    "ibkr": {
+        "host": "127.0.0.1",
+        "port": 7497,
+        "client_id": 1
+    },
+    "default_symbol": "AAPL",
+    "default_capital": 100000
+}
