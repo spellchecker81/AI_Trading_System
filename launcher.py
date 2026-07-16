@@ -1,9 +1,10 @@
 import os
-os.environ["ARROW_DEFAULT_MEMORY_POOL"] = "system"  # keeps the segfault fix
+os.environ["ARROW_DEFAULT_MEMORY_POOL"] = "system"
 
 import sys
 import subprocess
 import threading
+import multiprocessing
 import time
 import socket
 import webview
@@ -29,7 +30,27 @@ def find_free_port():
 PORT = find_free_port()
 
 
-def start_streamlit():
+def run_streamlit_frozen(dashboard_path, port):
+    os.environ["ARROW_DEFAULT_MEMORY_POOL"] = "system"
+    os.environ["STREAMLIT_GLOBAL_DEVELOPMENT_MODE"] = "false"
+
+    sys.argv = [
+        "streamlit", "run", dashboard_path,
+        "--server.port", str(port),
+        "--server.headless", "true",
+        "--server.address", "localhost",
+        "--browser.gatherUsageStats", "false",
+    ]
+
+    from streamlit.web.cli import main
+
+    try:
+        main()
+    except SystemExit:
+        pass
+
+
+def start_streamlit_dev():
     subprocess.run([
         sys.executable, "-m", "streamlit", "run", DASHBOARD_PATH,
         "--server.headless", "true",
@@ -38,7 +59,7 @@ def start_streamlit():
     ])
 
 
-def wait_for_server(host="localhost", port=PORT, timeout=30):
+def wait_for_server(port, host="localhost", timeout=30):
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -49,22 +70,35 @@ def wait_for_server(host="localhost", port=PORT, timeout=30):
     return False
 
 
-if not os.path.exists(DASHBOARD_PATH):
-    print(f"FATAL: dashboard.py not found at {DASHBOARD_PATH}", flush=True)
-    print(f"BASE_DIR was resolved to: {BASE_DIR}", flush=True)
-    sys.exit(1)
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
 
-print(f"[launcher] Using port {PORT} for this session", flush=True)
+    if not os.path.exists(DASHBOARD_PATH):
+        print(f"FATAL: dashboard.py not found at {DASHBOARD_PATH}", flush=True)
+        print(f"BASE_DIR was resolved to: {BASE_DIR}", flush=True)
+        sys.exit(1)
 
-threading.Thread(target=start_streamlit, daemon=True).start()
+    print(f"[launcher] Using port {PORT} for this session", flush=True)
 
-if wait_for_server():
-    webview.create_window(
-        "AI Trading System",
-        f"http://localhost:{PORT}",
-        width=1400,
-        height=900
-    )
-    webview.start()
-else:
-    print("Streamlit server never came up - check output above for errors.", flush=True)
+    if getattr(sys, "frozen", False):
+        proc = multiprocessing.Process(
+            target=run_streamlit_frozen,
+            args=(DASHBOARD_PATH, PORT),
+            daemon=True
+        )
+        proc.start()
+        server_timeout = 90
+    else:
+        threading.Thread(target=start_streamlit_dev, daemon=True).start()
+        server_timeout = 30
+
+    if wait_for_server(PORT, timeout=server_timeout):
+        webview.create_window(
+            "AI Trading System",
+            f"http://localhost:{PORT}",
+            width=1400,
+            height=900
+        )
+        webview.start()
+    else:
+        print("Streamlit server never came up - check output above for errors.", flush=True)
