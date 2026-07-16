@@ -4,15 +4,17 @@ import sys
 
 from functools import partial
 from pathlib import Path
-import asyncio
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+# Note: we intentionally do NOT set up an asyncio event loop here
+# anymore. Streamlit can execute different reruns of this script on
+# different worker threads, and creating a new event loop per rerun
+# was causing the persistent IBKR connection (which lives on its own
+# dedicated background thread/loop inside ibkr_market_data.py) to
+# become disconnected from whichever loop was "current" for this
+# thread, causing requests to silently hang until they timed out.
 
 import streamlit as st
 import pandas as pd
@@ -168,9 +170,23 @@ with exit_col3:
 
 st.divider()
 
-run_clicked = st.button("Run Backtest", type="primary")
+is_running = st.session_state.get("backtest_running", False)
 
-if run_clicked:
+run_clicked = st.button(
+    "Run Backtest",
+    type="primary",
+    disabled=is_running
+)
+
+if is_running:
+    st.caption(
+        "A request is already in progress - please wait for it to finish "
+        "before clicking again. IBKR will time out or reject rapid repeated "
+        "requests, which is the most common cause of a stuck-looking result."
+    )
+
+if run_clicked and not is_running:
+    st.session_state["backtest_running"] = True
     strategy_fn = build_strategy_callable(strategy_choice, buy_rsi, sell_rsi)
 
     with st.spinner(f"Downloading data and backtesting {symbol}..."):
@@ -182,6 +198,8 @@ if run_clicked:
             stop_loss_pct=stop_loss if stop_loss > 0 else None,
             trailing_pct=trailing_profit if trailing_profit > 0 else None
         )
+
+    st.session_state["backtest_running"] = False
 
     if results is not None:
         st.session_state["results"] = results
