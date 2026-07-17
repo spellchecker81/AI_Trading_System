@@ -1,16 +1,16 @@
-name: Build Windows EXE
+name: Build EXE
 
 on:
   push:
-    branches: [main, master]
-  workflow_dispatch:
+    branches: [ main ]
+  workflow_dispatch:  # lets you trigger manually from the Actions tab
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -20,14 +20,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller
 
       - name: Build EXE
-        run: pyinstaller --onefile launcher.py
+        run: |
+          pyinstaller --onefile --windowed --name YourAppName main.py
 
-      - name: Upload EXE
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-exe
-          path: dist/*.exe
+          name: YourAppName-windows
+          path: dist/YourAppName.exe
