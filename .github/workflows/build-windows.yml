@@ -3,7 +3,7 @@ name: Build Windows EXE
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,7 +13,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Example: Python project using PyInstaller
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -25,9 +24,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build EXE
-        run: pyinstaller --onefile your_script.py
+        run: pyinstaller --onefile launcher.py
 
-      # Upload the .exe as a downloadable artifact
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
