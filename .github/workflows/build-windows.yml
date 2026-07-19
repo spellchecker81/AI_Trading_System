@@ -24,12 +24,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build EXE
+  - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --name YourAppName main.py
-
+          pyinstaller --onefile --windowed --name AI_Trading_System launcher.py
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YourAppName-windows
-          path: dist/YourAppName.exe
+          name: AI_Trading_System-windows
+          path: dist/AI_Trading_System.exe
