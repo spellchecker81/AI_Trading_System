@@ -7,8 +7,8 @@ class Backtester:
         self,
         data,
         initial_capital=100000,
-        take_profit_pct=None,   # e.g. 10 for a fixed +10% target
-        stop_loss_pct=None,     # e.g. 5 for a fixed -5% stop
+        take_profit_pct=None,   # e.g. 20 for a fixed +20% target
+        stop_loss_pct=None,     # e.g. 8 for a fixed -8% stop
         trailing_pct=None       # e.g. 10 for a 10% trailing stop off the peak
     ):
         self.data = data.copy()
@@ -62,9 +62,10 @@ class Backtester:
                 continue
 
             price = current_data.iloc[-1]["close"]
+            date = current_data.iloc[-1]["date"]
 
             # 1. Check exit conditions FIRST if we're holding a position.
-            #    This takes priority over the strategy's own SELL signal.
+            #    These take priority over the strategy's own SELL signal.
             exit_reason = self._check_exit(price)
 
             if exit_reason and self.shares > 0:
@@ -72,6 +73,7 @@ class Backtester:
                 self.cash += proceeds
 
                 self.trades.append({
+                    "date": date,
                     "action": "SELL",
                     "reason": exit_reason,
                     "price": price,
@@ -95,7 +97,9 @@ class Backtester:
                     self.peak_price = price
 
                     self.trades.append({
+                        "date": date,
                         "action": "BUY",
+                        "reason": "STRATEGY_SIGNAL",
                         "price": price,
                         "shares": self.shares
                     })
@@ -105,6 +109,7 @@ class Backtester:
                     self.cash += proceeds
 
                     self.trades.append({
+                        "date": date,
                         "action": "SELL",
                         "reason": "STRATEGY_SIGNAL",
                         "price": price,

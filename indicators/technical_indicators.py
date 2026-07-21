@@ -56,6 +56,17 @@ def calculate_indicators(df):
         window=21
     ).ema_indicator()
 
+    # ATR (21-day) - volatility measure, also expressed as a % of price
+    # so it's comparable across symbols at different price levels
+    df["atr_21"] = ta.volatility.AverageTrueRange(
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        window=21
+    ).average_true_range()
+
+    df["atr_21_pct"] = (df["atr_21"] / df["close"]) * 100
+
     return df
 
 

@@ -8,16 +8,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-# Note: we intentionally do NOT set up an asyncio event loop here
-# anymore. Streamlit can execute different reruns of this script on
-# different worker threads, and creating a new event loop per rerun
-# was causing the persistent IBKR connection (which lives on its own
-# dedicated background thread/loop inside ibkr_market_data.py) to
-# become disconnected from whichever loop was "current" for this
-# thread, causing requests to silently hang until they timed out.
-
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 
 from market_data.ibkr_market_data import get_historical_data
 
@@ -36,6 +30,108 @@ st.set_page_config(
     page_title="AI Trading System",
     layout="wide"
 )
+
+
+# ---------------------------------------------------------------------
+# Appearance: larger/bolder base font, plus a Light / Dark / System
+# theme switch. Streamlit's own theme is fixed at server start, so this
+# works by injecting CSS that overrides colors directly - "System"
+# uses a prefers-color-scheme media query so it follows the OS setting
+# live rather than being pinned one way.
+# ---------------------------------------------------------------------
+def inject_theme_css(theme_choice):
+    base_font = """
+        html, body, [class*="css"] {
+            font-size: 17px !important;
+        }
+        label, .stMarkdown p, .stCaption, div[data-testid="stMetricLabel"] {
+            font-weight: 600 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-weight: 700 !important;
+            font-size: 1.6rem !important;
+        }
+        h1, h2, h3 {
+            font-weight: 700 !important;
+        }
+    """
+
+    light_colors = """
+        [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+            background-color: #ffffff !important;
+            color: #1a1a1a !important;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #f5f5f5 !important;
+        }
+    """
+
+    dark_text_selectors = """
+        [data-testid="stAppViewContainer"] p,
+        [data-testid="stAppViewContainer"] span,
+        [data-testid="stAppViewContainer"] label,
+        [data-testid="stAppViewContainer"] li,
+        [data-testid="stAppViewContainer"] div,
+        [data-testid="stMarkdownContainer"] *,
+        [data-testid="stMetricLabel"] *,
+        [data-testid="stMetricValue"] *,
+        [data-testid="stWidgetLabel"] *,
+        .stRadio label, .stSlider label, .stTextInput label,
+        .stNumberInput label, .stCaption, .stCaption *,
+        h1, h2, h3, h4, h5, h6 {
+            color: #ffffff !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #ffffff !important;
+            font-weight: 700 !important;
+        }
+    """
+
+    dark_colors = f"""
+        [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+            background-color: #0e1117 !important;
+            color: #ffffff !important;
+        }}
+        [data-testid="stSidebar"] {{
+            background-color: #161a23 !important;
+        }}
+        {dark_text_selectors}
+    """
+
+    system_colors = f"""
+        @media (prefers-color-scheme: light) {{
+            [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+                background-color: #ffffff !important;
+                color: #1a1a1a !important;
+            }}
+        }}
+        @media (prefers-color-scheme: dark) {{
+            [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
+                background-color: #0e1117 !important;
+                color: #ffffff !important;
+            }}
+            {dark_text_selectors}
+        }}
+    """
+
+    if theme_choice == "Light":
+        color_css = light_colors
+    elif theme_choice == "Dark":
+        color_css = dark_colors
+    else:
+        color_css = system_colors
+
+    st.markdown(f"<style>{base_font}{color_css}</style>", unsafe_allow_html=True)
+
+
+theme_choice = st.radio(
+    "Appearance",
+    options=["Light", "Dark", "System"],
+    index=2,
+    horizontal=True
+)
+inject_theme_css(theme_choice)
 
 
 def build_strategy_callable(strategy_choice, buy_rsi, sell_rsi):
@@ -85,6 +181,98 @@ def run_backtest(symbol, capital, strategy_fn, take_profit_pct, stop_loss_pct, t
     return results, data
 
 
+def build_rsi_chart(data, trades, buy_threshold, sell_threshold):
+    """
+    RSI line chart that reacts live to the buy/sell threshold sliders
+    (the fill zones and threshold lines always use whatever the
+    sliders are currently set to, not just whatever they were when
+    the backtest last ran), plus green up-arrows for BUY trades and
+    red down-arrows for SELL trades plotted at each trade's date.
+    """
+    fig = go.Figure()
+
+    # Oversold zone (green fill, below the buy threshold)
+    fig.add_trace(go.Scatter(
+        x=data["date"], y=[buy_threshold] * len(data),
+        line=dict(width=0), showlegend=False, hoverinfo="skip"
+    ))
+    fig.add_trace(go.Scatter(
+        x=data["date"], y=[0] * len(data),
+        fill="tonexty", fillcolor="rgba(0, 200, 0, 0.15)",
+        line=dict(width=0), showlegend=False, hoverinfo="skip"
+    ))
+
+    # Overbought zone (red fill, above the sell threshold)
+    fig.add_trace(go.Scatter(
+        x=data["date"], y=[sell_threshold] * len(data),
+        line=dict(width=0), showlegend=False, hoverinfo="skip"
+    ))
+    fig.add_trace(go.Scatter(
+        x=data["date"], y=[100] * len(data),
+        fill="tonexty", fillcolor="rgba(220, 0, 0, 0.15)",
+        line=dict(width=0), showlegend=False, hoverinfo="skip"
+    ))
+
+    # Threshold lines
+    fig.add_hline(y=buy_threshold, line_dash="dot", line_color="green",
+                  annotation_text=f"Buy threshold ({buy_threshold})")
+    fig.add_hline(y=sell_threshold, line_dash="dot", line_color="red",
+                  annotation_text=f"Sell threshold ({sell_threshold})")
+
+    # RSI line itself
+    fig.add_trace(go.Scatter(
+        x=data["date"], y=data["rsi_14"],
+        mode="lines", name="RSI (14)",
+        line=dict(color="#1f77b4", width=2)
+    ))
+
+    # Buy/sell trade markers, matched to the RSI value on that date
+    rsi_by_date = data.set_index("date")["rsi_14"]
+
+    buy_x, buy_y = [], []
+    sell_x, sell_y = [], []
+
+    for t in trades:
+        trade_date = t["date"]
+        if trade_date not in rsi_by_date.index:
+            continue
+        rsi_val = rsi_by_date.loc[trade_date]
+        if isinstance(rsi_val, pd.Series):
+            rsi_val = rsi_val.iloc[0]
+        if pd.isna(rsi_val):
+            continue
+
+        if t["action"] == "BUY":
+            buy_x.append(trade_date)
+            buy_y.append(max(0, rsi_val - 8))
+        elif t["action"] == "SELL":
+            sell_x.append(trade_date)
+            sell_y.append(min(100, rsi_val + 8))
+
+    if buy_x:
+        fig.add_trace(go.Scatter(
+            x=buy_x, y=buy_y, mode="markers", name="Buy",
+            marker=dict(symbol="triangle-up", size=13, color="green")
+        ))
+
+    if sell_x:
+        fig.add_trace(go.Scatter(
+            x=sell_x, y=sell_y, mode="markers", name="Sell",
+            marker=dict(symbol="triangle-down", size=13, color="red")
+        ))
+
+    fig.update_layout(
+        height=380,
+        margin=dict(l=10, r=10, t=30, b=10),
+        yaxis=dict(range=[0, 100], title="RSI"),
+        xaxis=dict(title=None),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+
+    return fig
+
+
 st.title("AI Trading System v0.1")
 st.divider()
 
@@ -118,7 +306,7 @@ with ind_col1:
         max_value=50,
         value=30,
         disabled=(strategy_choice != "RSI Mean Reversion"),
-        help="Only used when Strategy is set to RSI Mean Reversion."
+        help="Only used when Strategy is set to RSI Mean Reversion. Also drives the RSI chart's threshold lines below, live."
     )
 
 with ind_col2:
@@ -128,7 +316,7 @@ with ind_col2:
         max_value=90,
         value=70,
         disabled=(strategy_choice != "RSI Mean Reversion"),
-        help="Only used when Strategy is set to RSI Mean Reversion."
+        help="Only used when Strategy is set to RSI Mean Reversion. Also drives the RSI chart's threshold lines below, live."
     )
 
 st.subheader("Exit Rules")
@@ -227,16 +415,36 @@ if "results" in st.session_state:
             wins += 1
     win_rate = (wins / len(sell_trades) * 100) if sell_trades else None
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    latest_atr_pct = data["atr_21_pct"].iloc[-1] if "atr_21_pct" in data.columns else None
+    current_price = data["close"].iloc[-1]
+
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Symbol", symbol)
+    m1.caption(f"${current_price:,.2f}")
     m2.metric("Final Value", f"${results['final_value']:,.2f}")
     m3.metric("Return", f"{results['return_percent']:.2f}%")
     m4.metric("Trades", len(sell_trades))
     m5.metric("Win Rate", f"{win_rate:.0f}%" if win_rate is not None else "N/A")
+    m6.metric(
+        "ATR (21d)",
+        f"{latest_atr_pct:.2f}%" if latest_atr_pct is not None and not pd.isna(latest_atr_pct) else "N/A",
+        help="21-day Average True Range as a % of price - a measure of how much this symbol typically moves day to day."
+    )
 
-    with st.expander("Raw trade log"):
-        if results["trades"]:
-            st.dataframe(pd.DataFrame(results["trades"]), use_container_width=True)
+    st.subheader("RSI")
+    st.caption("Threshold lines and fill zones update live with the RSI Buy/Sell Threshold sliders above.")
+    st.plotly_chart(
+        build_rsi_chart(data, trades, buy_rsi, sell_rsi),
+        use_container_width=True
+    )
+
+    with st.expander("Raw trade log", expanded=True):
+        if trades:
+            trade_df = pd.DataFrame(trades)
+            trade_df = trade_df[["date", "action", "reason", "price", "shares"]]
+            trade_df.columns = ["Date", "Action", "Reason", "Price", "Shares"]
+            trade_df["Price"] = trade_df["Price"].map(lambda p: f"${p:,.2f}")
+            st.dataframe(trade_df, use_container_width=True, hide_index=True)
         else:
             st.write("No trades were triggered over this period.")
 
